@@ -1,0 +1,22 @@
+---
+description: Sprite layering — objects with a top layer render in front of agents so agents walk behind them
+globs: src/ui/GridViewPixi.tsx, src/config/spriteRegistry.ts
+alwaysApply: false
+---
+
+# Sprite layer rule (non-agent objects)
+
+**Rule:** For sprites **excluding agent sprites**, if an object has a **top layer** (or top layers), it must render with a **higher effective z-order** so agents appear to walk **behind** it, not on top of it.
+
+## Implementation
+
+- **`objectHasTopLayer(defId)`** (in `spriteRegistry.ts`) identifies objects that have a top layer: chairs (chair back), and any defId with a two-part top slice (plants, plant_bushy, plant_large, watercooler, recycling_bin). Trash cans are 1×1 and have no top layer.
+- In **GridViewPixi**, such objects are drawn into **`topLayerObjectContainer`**, which is added to the stage **after** `agentsContainer`. Draw order is: items → computers → agents → **topLayerObjectContainer** → navDebug.
+- When adding new item types that have a visual “top” (e.g. tall furniture that should occlude agents), either:
+  - Add a top slice via `getTwoPartTopSliceName` and include the defId in the `objectHasTopLayer` logic (or keep using `getTwoPartTopSliceName` if the helper already covers it), or
+  - Explicitly treat the defId as top-layer in `objectHasTopLayer` so its sprites go into `topLayerObjectContainer`.
+
+## Do not
+
+- Put agent sprites in the top-layer container; only **object** sprites (furniture, props) that have a top layer.
+- Render top-layer objects in the same container as agents without a separate foreground container; otherwise agents would draw on top of them.

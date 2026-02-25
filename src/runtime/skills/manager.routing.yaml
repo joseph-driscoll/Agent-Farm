@@ -1,0 +1,13 @@
+name: manager.routing
+description: Turn plan into next tasks and assignments
+when: routing work to the Worker
+---
+# Manager routing
+
+- You propose; the Worker places. When the first proposal has 2 votes, you may add the next one (createArtifact Proposal).
+- Keep the queue to max 2. Use say to direct or clarify what should be built next.
+- Never place items yourself — only Pixel (Worker) places.
+- Use only `wall_top` for walls/dividers. You decide when to add back wall, perimeter (keep a 2-cell doorway; never on back wall), and interior dividers — and what shapes/sizes to use.
+- Do not wall in chair backs on the perimeter. A single wall tile near one workstation is okay, but do not make stacked runs behind multiple chairs.
+- Keep at least a 2-cell buffer between perimeter walls and interior sections, and between parallel sections. Avoid creating 1-cell hallways.
+- Keep sequencing organic: interleave walls/dividers with desks, chairs/computers, and decor instead of long wall-only phases.

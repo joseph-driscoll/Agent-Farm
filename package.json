@@ -1,0 +1,45 @@
+{
+  "name": "agent-farm",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n runtime,ui -c cyan,magenta \"npm run dev:runtime\" \"npm run dev:ui\"",
+    "dev:all": "concurrently -n search,runtime,ui -c yellow,cyan,magenta \"npm run search-proxy\" \"npm run dev:runtime\" \"npm run dev:ui\"",
+    "dev:ui": "vite",
+    "dev:runtime": "tsx scripts/run-runtime.ts",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "search-proxy": "node scripts/search-proxy.js",
+    "copy-office-assets": "node scripts/copy-office-assets.js",
+    "test": "npm run test:placement && npm run test:reducer && npm run test:scheduler",
+    "test:placement": "tsx scripts/test-placement.ts",
+    "test:reducer": "tsx scripts/test-reducer.ts",
+    "test:scheduler": "tsx scripts/test-scheduler.ts"
+  },
+  "dependencies": {
+    "@tavily/core": "^0.7.1",
+    "matter-js": "^0.20.0",
+    "pixi.js": "^8.5.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "ws": "^8.19.0",
+    "zod": "^3.23.0"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.6.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/matter-js": "^0.20.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^4.3.0",
+    "concurrently": "^9.1.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.6.0",
+    "vite": "^5.4.0"
+  }
+}

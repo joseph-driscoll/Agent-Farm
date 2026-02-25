@@ -1,0 +1,17 @@
+---
+description: Project law — engine-first, deterministic, render-only UI. Source of truth is .cursor/rules.md
+alwaysApply: true
+---
+
+# Project Law (Always Apply)
+
+The **source of truth** for this project is **.cursor/rules.md**. Read it for any task that touches placement, state, or UI.
+
+## Non-negotiable
+
+- **Engine** (`src/engine/*`) owns placement legality; **UI** (`src/ui/*`, GridViewPixi) is **render-only** (no rewriting x/y to "fix" placement).
+- **Reducer** is deterministic; no `Date.now()` or randomness in state transitions.
+- **Runtime/LLM** must mirror engine `canPlaceAt` with `canFitAt`; no new rules only in runtime.
+- **Computers/chairs**: final cell (x,y) is decided by engine/state at placement time; renderer may only apply pixel nudges.
+
+Before coding: use `.cursor/templates/one_page_plan.md`. After: use `.cursor/templates/diff_narrative.md`. For placement/render bugs: use Engine-First Debugging skill and `.cursor/templates/truth_table.md`.

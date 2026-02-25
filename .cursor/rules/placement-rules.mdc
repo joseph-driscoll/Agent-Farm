@@ -1,0 +1,231 @@
+---
+description: Agent-Farm placement rules — workstations, aisle, tables, bookshelf, vending machine, coffee maker, computers, chairs (with auto-flip)
+globs: src/engine/worldState.ts, src/engine/reducer.ts, src/runtime/llm.ts
+alwaysApply: false
+---
+
+# Placement Rules (Agent-Farm)
+
+These rules define legal placement and orientation constraints in the current codebase.
+Engine is authoritative; runtime suggestions must be engine-derived.
+
+## 0) Definitions & invariants
+
+- **Grid coordinates**: (x, y) are top-left of an item's footprint.
+- **Footprint**: defined by itemDefs footprint: [w, h]; validation must check all covered cells.
+- **Back wall rows**: y ∈ [0, BACK_WALL_ROWS - 1].
+- **Floor build starts**: BUILD_START_ROW (rows below back wall; rows BACK_WALL_ROWS..BUILD_START_ROW-1 are no-build).
+- **Principle**: LLM can suggest anything, but engine must reject illegal placements deterministically.
+
+## 1) Build zones
+
+### Floor items
+
+Must be fully on the floor build zone:
+
+- **Allowed**: workstation, chair, computer, table_small (floor), table_large, plants, decor, floor, wall_*.
+- **Rule**: workstations/chairs/computers must satisfy `y >= BUILD_START_ROW`.
+- Other floor items may be placed on floor rows `y >= BACK_WALL_ROWS`, unless their own constraints override.
+
+### No-build buffer rows (workstations, chairs, computers only)
+
+Rows immediately below the back wall (e.g. y=3,4,5 when BACK_WALL_ROWS=3 and BUILD_START_ROW=6) are **no-build only for workstations, chairs, and computers**. These three must be at row BUILD_START_ROW (6) or below. Other floor items (tables, plants, floor tiles, etc.) may be placed in the buffer rows (y ≥ BACK_WALL_ROWS) except the back-wall "counter" exception below.
+
+### Back-wall constrained items
+
+- `bookshelf` and `vending_machine` must fit fully in back wall rows (current footprints are 2×3, so y=0 in a 3-row wall).
+- **Plants** (`plant`, `plant_bushy`, `plant_large`) may be placed along the back wall **only on row 2** (bottom row of the back wall, `y === BACK_WALL_ROWS - 1`), like vending machines; they must **not** be placed on rows 0 or 1. They require a clear south approach.
+- `coffee_maker` must be on back-wall bottom row (`y === BACK_WALL_ROWS - 1`) and on top of a table cell (`hasTableAt`).
+- `wall_art*` must be on back wall but not on the back-wall bottom row (except memo overlays on workstation top corners).
+
+### Floor (floor)
+
+- `floor` is non-blocking and can be placed under other objects.
+- Valid only on cells where `cell.kind === 'floor'`.
+
+### Interior wall (`wall_*`)
+
+- `wall_*` items are overlay-allowed and non-blocking for placement collisions.
+- They still block movement in nav (`isCellBlockedForAgents` checks `wall_` occupancy).
+
+## 2) Workstations (5×2) — columns, stacking, aisles
+
+Workstations are special: they define the "office grammar."
+
+### Column stacking (vertical)
+
+- **Max per column**: WORKSTATION_STACK_MAX (e.g. 3).
+- **Stack alignment**: workstations in the same column must share the same left-edge x.
+- **Stack spacing**: new workstation must be exactly ±2 rows from an existing one in that same column (because footprint height = 2). In other words: if a column already has a workstation at (x, y0), another in that column must be at y0 ± 2, not arbitrary.
+- **First workstation in a column**: must start at y ≥ BUILD_START_ROW.
+
+### Inter-column gap (horizontal aisle)
+
+- Any two workstation columns must have a clear gap of at least WORKSTATION_GAP_CELLS (2) empty cells between them.
+- **Aisle only when gap is 2 or 3**: The space between two columns is an "aisle" (no building) only when the gap is exactly 2 or 3 grid cells. If the gap is more than 3 cells, it is not considered an aisle and those rules do not apply — building is allowed there.
+- **Aisle is only between the workstations, not above or below**: The aisle is the horizontal gap (in x) between two columns **and** only in the rows (y) where workstations in those columns exist. Once you are past the workstations (above the top or below the bottom of the column pair), the rules do not apply — building is allowed there.
+
+### Aisle definition
+
+If you have workstation column left-edges xA and xB with xA < xB:
+
+- Column A spans xA..xA+4
+- Column B spans xB..xB+4
+- Gap in x = cells [xA+5, xB-1]; gap width = xB − xA − 5.
+- **Aisle** (no objects): only when gap width is 2 or 3 (AISLE_GAP_MAX = 3), **and** only in rows y from the top of the topmost workstation to the bottom of the bottommost workstation in that column pair. Cells above or below that y-range are not aisle; plants/tables/chairs/etc. may be placed there.
+
+### Where enforced
+
+- **Engine**: `canPlaceAt()` in `worldState.ts` is authoritative.
+- **Runtime/LLM**: "Good next spots" are generated from engine `getValidPlacementTiles()`.
+
+## 3) Back wall rules — bookshelf, vending machine, counter tables, coffee maker
+
+### Bookshelf and vending_machine
+
+- Current footprint is 2×3 in engine item defs.
+- Must fit entirely on back wall rows.
+
+### Back-wall counter: table_small at bottom wall row only
+
+- table_small has a special exception when used as a counter:
+  - **Allowed only when** `y === BACK_WALL_ROWS - 1` (e.g. y=2).
+  - Must stay fully within back wall width bounds.
+  - This placement is treated as wall-zone, not floor-zone.
+
+### Wall art
+
+- `wall_art*` is allowed on back wall rows except the bottom row.
+- `wall_art_memo_a` / `wall_art_memo_b` are additionally allowed on workstation top corner cells.
+
+### Coffee maker — must sit on a table on the bottom wall row
+
+- Must be placed at `y === BACK_WALL_ROWS - 1` (e.g. y=2).
+- The cell (x, y) must be covered by an existing table_small or table_large footprint (`hasTableAt(world, x, y)`).
+- Coffee maker is allowed to "overlap" the table in the same cell (stacking exception), similar to how computers sit on desks.
+- **Correct build order**: place table_small on the bottom wall row, then place coffee_maker on that table.
+
+## 4) Computers — desk-only, chair-first, one cell in, auto-facing, no double-stacking
+
+Computers are not floor items. They are desk accessories.
+
+### Build order: chair before computer
+
+- **A chair must always be placed at a desk/workstation before a computer.** A computer may be placed on a desk cell only if that workstation already has a chair adjacent (4-neighborhood) to its desk row. Enforce in `canPlaceAt(world, 'computer', x, y)` by requiring `hasChairAdjacentToDesk(world, x, y)` (or equivalent: at least one chair adjacent to the same workstation’s desk row). This guarantees the workstation is “claimed” by a seat before adding the computer.
+
+### Desk-only constraint
+
+- A computer may be placed only on the desk row of a workstation (the bottom row of the 5×2): `isDeskCell(world, x, y)` must be true.
+- Never allow computers on: floor tiles not part of a desk row, top row of workstation, aisle cells.
+
+### One grid cell in (not on desk edge)
+
+- A computer must be placed on the **left or right inward** desk cell only (never the center). So for a workstation desk row spanning `x..x+4`, valid computer cells are **x+1** (left) or **x+3** (right) only — not `x`, **x+2** (center), or `x+4`. Same-side rule: place computer at x+1 only when there is a chair on the left of the desk; at x+3 only when there is a chair on the right. Enforce via `isDeskCellInward(world, x, y)` (true only for desk.x+1 or desk.x+3).
+
+### No double computer stacking on same desk cell
+
+If a computer already occupies (x, y), reject additional computer at (x, y).
+
+### Auto-flip (orientation, current)
+
+If caller does not specify flipped, reducer should set it deterministically:
+
+- Current implementation: `getComputerFlipped(world, x, y)` returns `true` on right side (`x >= desk.x + 3`) and `false` otherwise.
+
+## 5) Chairs — must face a desk first, then computer; auto-flip based on side
+
+Chairs are floor items, but only valid if they are "assigned" to a desk adjacency. **Place chairs at workstations before placing computers** (see §4 build order).
+
+### Desk adjacency constraint (current)
+
+- Chairs are currently constrained to exact slot positions (desk leftmost/rightmost cells on desk row), via `isChairSlotPosition`.
+
+### Auto-flip (orientation)
+
+If flipped omitted, reducer uses `getChairFlipped(world, x, y)` from `worldState.ts`.
+
+## 6) Tables — meeting zones, never hugging workstations
+
+Tables create "collaboration zones" and must not block workstation ergonomics.
+
+### Floor tables (table_large, table_small when on floor)
+
+- Must be fully in floor build zone (y ≥ BUILD_START_ROW), except the back-wall counter exception above.
+
+### Keep tables away from workstations
+
+- Reject if any footprint cell of a table is adjacent (4-neighborhood) to any workstation footprint cell.
+- Use `hasWorkstationAdjacent(world, x, y)` across the table's footprint.
+
+### Aisle still sacred
+
+Tables may not occupy any aisle cell (use `isCellInAisle`).
+
+## 7) "Exotic but methodical" layout policy (design goals, not physics)
+
+These are guidelines to drive Good Spots ordering / agent preferences without becoming hard constraints.
+
+### Preferred archetypes (pick one per run)
+
+- **Cathedral Aisle (symmetric columns)**: Two workstation columns mirrored around center; aisle is a straight promenade; plants and meeting zone offset to one side.
+- **Gallery Wall (back-wall exhibits)**: Bookshelves + counter coffee bar on wall; floor is minimal; one column of workstations plus an open lounge.
+- **Split-Brain (focus vs collab)**: One half of the floor for dense workstation stacks; other half for table_large + plants; clear "border" corridor.
+- **Serpentine Flow (staggered stacks)**: Still obeys stacking, but positions columns so the path bends: column A starts higher, column B starts lower, creating a gentle zig-zag while keeping aisles clear.
+
+### Heuristics to achieve it (LLM + Good Spots)
+
+- Prefer proposing workstations in clean columns first (one column, then a second with valid aisle gap).
+- After first workstation, prioritize chair + computer so stations become "usable."
+- Place plants to frame zones but never in aisles; use them as "soft walls" around meeting areas.
+- Coffee bar on back wall should be "anchored" early for vibe: table_small @ wall, then coffee_maker on it.
+
+These heuristics belong in: ITEM_IMPORTANCE_ORDER / prompt guidance; optional scoring bonuses (aesthetic) — but not in placement legality.
+
+## 8) Where enforcement lives (single source of truth)
+
+### Engine (authoritative legality)
+
+**src/engine/worldState.ts**
+
+- `canPlaceAt()` (or equivalent) must enforce all hard rules.
+- Helper funcs: isDeskCell, isDeskCellInward, hasChairAdjacentToDesk, hasDeskAdjacent, isCellInAisle, etc.
+
+### Reducer (authoritative auto-orientation & stacking exceptions)
+
+**src/engine/reducer.ts**
+
+- `getChairFlipped(world, x, y)`
+- `getComputerFlipped(world, x, y)`
+- "Overlap exceptions" (computer-on-desk, coffee-on-table) handled here or in canPlaceAt logic consistently.
+
+### Runtime LLM suggestion layer
+
+**src/runtime/llm.ts**
+
+- "Good next spots" are built from `getValidPlacementTiles()` and are always engine-legal.
+- Seeded order is acceptable, legality must remain engine-derived.
+
+## 9) Functions and constants referenced (all in use)
+
+| Symbol | File | Purpose |
+|--------|------|---------|
+| `BACK_WALL_ROWS` | worldState.ts | Number of back-wall rows (e.g. 3). |
+| `BUILD_START_ROW` | worldState.ts | First row where floor items may be placed (e.g. 6). |
+| `WORKSTATION_STACK_MAX` | worldState.ts | Max workstations per column (e.g. 3). |
+| `WORKSTATION_GAP_CELLS` | worldState.ts | Min empty cells between workstation columns (2). |
+| `AISLE_GAP_MAX` | worldState.ts | Aisle = gap between columns only when gap ≤ this (3); gap > 3 is not an aisle. |
+| `canPlaceAt(world, defId, x, y)` | worldState.ts | Authoritative placement legality; enforces all hard rules. |
+| `getPlacementFailureReason(world, defId, x, y)` | worldState.ts | Human-readable reason when `canPlaceAt` would be false. |
+| `isDeskCell(world, x, y)` | worldState.ts | True if (x,y) is the bottom (desk) row of a workstation. |
+| `isDeskCellInward(world, x, y)` | worldState.ts | True if (x,y) is a desk cell and not the leftmost or rightmost column of that workstation (computer “one cell in” rule). |
+| `hasChairAdjacentToDesk(world, deskX, deskY)` | worldState.ts | True if the workstation containing desk cell (deskX, deskY) has at least one chair 4-adjacent to its desk row (chair-before-computer rule). |
+| `hasDeskAdjacent(world, x, y)` | worldState.ts | True if (x,y) is 4-adjacent to a desk cell. |
+| `isCellInAisle(world, x, y)` | worldState.ts | True if (x,y) is in the aisle between two columns whose gap is 2 or 3 cells (gap > 3 = not aisle). |
+| `hasWorkstationAdjacent(world, x, y)` | worldState.ts | True if (x,y) is 4-adjacent to any workstation cell. |
+| `hasTableAt(world, x, y)` | worldState.ts | True if (x,y) is covered by a table_small or table_large. |
+| `getComputerFlipped(world, x, y)` | worldState.ts | Auto-orientation for computer (left half → true, right → false). |
+| `getChairFlipped(world, x, y)` | worldState.ts | Auto-orientation for chair (left/right/front of desk). |
+| `getComputerFlipped` / `getChairFlipped` | reducer.ts | Used when placing computer/chair without explicit `flipped`. |
+| `canPlaceAt` / `getPlacementFailureReason` | reducer.ts | Used to validate PLACE_ITEM and return fail reason. |
+| `getValidPlacementTiles(world, defId)` | llm.ts / worldState.ts | Engine-derived legal spots for prompt context. |
+| `ITEM_IMPORTANCE_ORDER` | config/atlasBuildOrder.ts | Order/heuristics for Good Spots and prompt guidance (section 7). |

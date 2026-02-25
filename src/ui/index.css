@@ -1,0 +1,86 @@
+/* Match agent-sandbox look and feel */
+* {
+  box-sizing: border-box;
+}
+
+/* Responsive breakpoints (use in JS via matchMedia or here in media queries) */
+:root {
+  --bp-phone-sm: 360px;
+  --bp-phone: 480px;
+  --bp-phone-lg: 576px;
+  --bp-tablet: 768px;
+  --bp-tablet-lg: 992px;
+  --bp-laptop: 1200px;
+  --bp-desktop: 1400px;
+  --safe-top: env(safe-area-inset-top, 0);
+  --safe-bottom: env(safe-area-inset-bottom, 0);
+  --safe-left: env(safe-area-inset-left, 0);
+  --safe-right: env(safe-area-inset-right, 0);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0 env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+  background: #0f0f1a;
+  color: #e8e8e8;
+  font-family: system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+/* Custom cursor: hide native cursor when our follow-mouse cursor is active */
+body.custom-cursor-active {
+  cursor: none !important;
+}
+body.custom-cursor-active * {
+  cursor: none !important;
+}
+/* Over a clickable: show the system pointer (traditional finger-up hand) */
+body.custom-cursor-active.custom-cursor-use-system-pointer {
+  cursor: pointer !important;
+}
+body.custom-cursor-active.custom-cursor-use-system-pointer * {
+  cursor: pointer !important;
+}
+
+/* Cursor reticle: no animation, calm office-game look */
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Responsive typography */
+h1, h2, h3 {
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+}
+h1 { font-size: 1.75rem; letter-spacing: -0.5px; }
+h2 { font-size: 1rem; color: #888; }
+h3 { font-size: 0.9rem; color: #888; }
+
+@media (max-width: 767px) {
+  h1 { font-size: 1.25rem; }
+  h2 { font-size: 0.95rem; }
+  h3 { font-size: 0.85rem; }
+}
+@media (max-width: 479px) {
+  h1 { font-size: 1.1rem; }
+}
+
+/* Agent chat bubble: two full lines visible, smooth scroll once then hold; short so bubble can disappear after */
+@keyframes bubble-scroll-once {
+  0% { transform: translateY(0); }
+  70% { transform: translateY(var(--bubble-scroll-amt, 0)); }
+  100% { transform: translateY(var(--bubble-scroll-amt, 0)); }
+}
+.bubble-scroll-inner {
+  animation: bubble-scroll-once 9s ease-in-out 1 forwards;
+}

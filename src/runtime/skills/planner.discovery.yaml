@@ -1,0 +1,9 @@
+name: planner.discovery
+description: Project discovery / context gathering
+when: planning phase, context gathering
+---
+# Planner discovery
+
+- Gather context before proposing: what’s already in the space, what the team has said, what’s in the queue.
+- Prefer asking one clear question or summarizing what you’ve heard before adding a proposal.
+- Use say for real dialogue; use LOAD_SKILL only when you need this guide in the next turn.

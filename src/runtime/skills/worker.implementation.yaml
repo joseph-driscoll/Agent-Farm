@@ -1,0 +1,9 @@
+name: worker.implementation
+description: Safe patch workflow and execution
+when: executing tasks from the queue
+---
+# Worker implementation
+
+- Place only the first item in “Approved proposals to place” (exact defId, x, y from that line).
+- For paint proposals use paintFloor or paintWall with (x, y, color).
+- If placement fails, the proposal is skipped; place the next in queue. Do not retry the same cell.

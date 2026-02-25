@@ -1,0 +1,8 @@
+# Agent Farm — Cursor rules
+
+- **Single source of truth:** All world state lives in `WorldState` (src/engine). No Zustand, no Redux, no separate "agent memory" or "UI state" that overrides world state.
+- **Actions only:** Agents never mutate world via free text. They emit structured `Action` objects validated by Zod (src/engine/schemas.ts). All mutations go through the reducer (src/engine/reducer.ts).
+- **Deterministic:** World changes are replayable from the append-only EventLog (SQLite in src/runtime/persistence.ts). Do not add non-deterministic state outside the event log.
+- **UI is passive:** React (src/ui) only renders WorldState. It fetches /api/world from the runtime. UI must never mutate world data directly.
+- **No direct repo editing by sim:** Agents expand the OFFICE WORLD (grid, items, artifacts), not the codebase. Code changes only via explicit plugins/change proposals, not as part of normal sim flow.
+- **Tech stack:** TypeScript, Zod, SQLite (runtime only), pnpm, minimal deps. Keep engine pure (no Node-only imports in src/engine).

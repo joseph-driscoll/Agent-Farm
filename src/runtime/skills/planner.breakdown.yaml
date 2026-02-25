@@ -1,0 +1,9 @@
+name: planner.breakdown
+description: Spec-driven breakdown into tasks and artifacts
+when: breaking down goals into proposals
+---
+# Planner breakdown
+
+- Turn high-level goals into concrete proposals: one item or one paint action per Proposal artifact.
+- Use only (defId, x, y) from “Good next spots” or (x, y, color) from “Good paint spots”.
+- Max 2 proposals in queue; add the next when the Worker has placed one.
