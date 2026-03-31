@@ -1,16 +1,27 @@
 # Agent Farm
 
-A living office simulation where autonomous agents collaborate, research, and build inside a deterministic grid world.
+Agent Farm is a living office simulation where AI teammates wake up in an empty room and slowly turn it into a functional, expressive workspace.
+
+Nova researches. Sage plans. Pixel builds.  
+They talk, propose, vote, place objects, and adapt as the space evolves.
+
+Under the hood, every change still flows through deterministic world rules so the sim stays debuggable and replayable.
 
 ![Agent Farm live simulation](./docs/agent-farm-live.png)
 
-## Why this is cool
+## What you feel when it runs
 
-- Deterministic simulation core (`WorldState` + reducer + event log replay)
-- Autonomous multi-agent loop (Researcher, Architect, Builder, Judge)
-- Real-time UI with pixel-art rendering and live activity feed
-- Structured artifacts (proposals, research reports, decisions, pixel art)
-- LLM-powered behavior with guardrails (plus stub mode for zero-cost runs)
+- A real-time office that changes every few seconds
+- Agents with distinct voices and responsibilities
+- Visible collaboration: proposals, shipped items, research artifacts
+- A simulation that feels alive without becoming chaotic
+
+## Why the engineering matters
+
+- **Deterministic core**: `WorldState` + reducer + event log replay
+- **Guardrailed autonomy**: LLM-driven behavior constrained by engine legality
+- **Single source of truth**: engine state, not UI hacks
+- **Inspectability**: activity feed, truth panel, agent inspector, logs
 
 ## Quick start
 
@@ -19,7 +30,7 @@ npm install
 npm run dev
 ```
 
-Then open [http://localhost:5173](http://localhost:5173).
+Open [http://localhost:5173](http://localhost:5173).
 
 ## Run modes
 
@@ -53,9 +64,9 @@ If you use search, set `VITE_SEARCH_API_URL` to match your proxy port.
 
 ## Architecture at a glance
 
-- `src/engine`: deterministic rules, placement legality, reducer, scoring
-- `src/runtime`: tick loop, agent orchestration, LLM/tool calls, persistence, API
-- `src/ui`: React + Pixi renderer, activity feed, inspector, truth/debug panels
+- `src/engine`: deterministic placement rules, reducer, scoring
+- `src/runtime`: scheduler, agent turns, LLM/tool orchestration, persistence, API/WS
+- `src/ui`: React + Pixi grid renderer, activity feed, inspector, truth panel
 
 ## Persistence
 
@@ -64,8 +75,8 @@ If you use search, set `VITE_SEARCH_API_URL` to match your proxy port.
 
 ## Optional integrations
 
-- **Tavily**: Researcher can search/extract/crawl and publish ResearchReport artifacts
-- **PixelLab**: Architect/Builder can request character/tile/animation assets and publish PixelArt artifacts
+- **Tavily**: Researcher can search/extract/crawl and publish `ResearchReport` artifacts
+- **PixelLab**: Architect/Builder can request character/tile/animation assets and publish `PixelArt` artifacts
 
 ## Notes for long runs
 
