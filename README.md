@@ -92,6 +92,14 @@ Runs runtime + UI only (no Tavily). Researcher reports will have empty search re
 
 Example: `USE_LLM=1 npm run dev:runtime` or add `USE_LLM=1` to `.env` and run `npm run dev:runtime`. Example with fewer credits: `USE_LLM=1 LLM_EVERY_N_TICKS=3 npm run dev:runtime` uses the LLM every 3rd tick.
 
+## PixelLab (optional)
+
+When **PixelLab** is configured, the **Architect** and **Builder** agents can request pixel art (characters, tilesets, isometric tiles, animations) during the simulation. Results are stored as **PixelArt** artifacts and shown in the Agent Inspector.
+
+- **Setup:** Get an API token from [pixellab.ai](https://www.pixellab.ai) and set `PIXELLAB_API_TOKEN` (or `PIXELLAB_API_KEY`) in `.env`.
+- **Behavior:** With the token set, Architect and Builder see PixelLab tools in their prompt and may output one request per turn (e.g. `createCharacter`, `createTileset`, `createIsometricTile`, `animateCharacter`). The runtime calls the [PixelLab MCP](https://github.com/pixellab-code/pixellab-mcp) over HTTP and creates a PixelArt artifact with links to the generated assets.
+- **No token:** If unset, PixelLab is disabled and no extra API calls are made.
+
 ## Overnight / long runs
 
 The **runtime runs on your machine** (Node on port 3011). It is not a cloud service.

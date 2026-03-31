@@ -101,7 +101,15 @@ export function TruthPanel({ world }: TruthPanelProps) {
         </section>
         <section>
           <h3 style={{ margin: '0 0 8px 0', fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Items &amp; Artifacts</h3>
-          <p style={{ margin: 0, fontSize: 13, color: '#e8e8e8' }}>{world.items.length} items · {world.artifacts.length} artifacts</p>
+          <p style={{ margin: 0, fontSize: 13, color: '#e8e8e8' }}>
+            {world.items.length} items · {world.artifacts.length} artifacts
+            {(world.artifacts ?? []).some((a) => a.type === 'PixelArt') && (
+              <span style={{ color: '#9ca3af' }}>
+                {' '}
+                (PixelArt: {(world.artifacts ?? []).filter((a) => a.type === 'PixelArt').length})
+              </span>
+            )}
+          </p>
         </section>
         <section style={{ flex: 1, minHeight: 0 }}>
           <h3 style={{ margin: '0 0 8px 0', fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Last actions</h3>

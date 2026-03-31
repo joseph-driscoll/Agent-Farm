@@ -27,6 +27,7 @@ export function AgentInspectorPanel({ world, selectedAgentId, onSelectAgent, hid
   const events = world.lastEvents ?? []
   const proposals = world.artifacts.filter((a) => a.type === 'Proposal')
   const reports = world.artifacts.filter((a) => a.type === 'ResearchReport')
+  const pixelArt = world.artifacts.filter((a) => a.type === 'PixelArt')
 
   const voteCountByAgent = new Map<string, number>()
   for (const votes of Object.values(world.artifactVotes ?? {})) {
@@ -47,11 +48,13 @@ export function AgentInspectorPanel({ world, selectedAgentId, onSelectAgent, hid
           const setIntentCount = events.filter((e) => e.action.type === 'SET_INTENT' && e.action.agentId === selected.id).length
           const authoredProposals = proposals.filter((a) => a.authorAgentId === selected.id).length
           const authoredReports = reports.filter((a) => a.authorAgentId === selected.id).length
+          const authoredPixelArt = pixelArt.filter((a) => a.authorAgentId === selected.id).length
           const memoryCount = selected.memory?.length ?? 0
           const votesCast = voteCountByAgent.get(selected.id) ?? 0
           const contributionScore =
             authoredProposals * 8 +
             authoredReports * 10 +
+            authoredPixelArt * 6 +
             placeCount * 6 +
             votesCast * 2 +
             sayCount +
@@ -65,6 +68,7 @@ export function AgentInspectorPanel({ world, selectedAgentId, onSelectAgent, hid
             setIntentCount,
             authoredProposals,
             authoredReports,
+            authoredPixelArt,
             memoryCount,
             votesCast,
             contributionScore: Math.round(contributionScore),
@@ -230,8 +234,50 @@ export function AgentInspectorPanel({ world, selectedAgentId, onSelectAgent, hid
             <div>Votes cast: {selectedStats.votesCast}</div>
             <div>Proposals authored: {selectedStats.authoredProposals}</div>
             <div>Research reports authored: {selectedStats.authoredReports}</div>
+            <div>Pixel art authored: {selectedStats.authoredPixelArt}</div>
             <div>Memory entries: {selectedStats.memoryCount}</div>
           </div>
+
+          {pixelArt.filter((a) => a.authorAgentId === selected.id).length > 0 && (
+            <div style={{ background: '#1d1d2d', border: '1px solid #2f2f46', borderRadius: 8, padding: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Pixel art</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {pixelArt
+                  .filter((a) => a.authorAgentId === selected.id)
+                  .map((art) => {
+                    const payload = art.payload as { tool?: string; title?: string; url?: string; urls?: string[] }
+                    const firstUrl = payload?.url ?? payload?.urls?.[0]
+                    return (
+                      <div
+                        key={art.id}
+                        style={{
+                          border: '1px solid #334155',
+                          borderRadius: 6,
+                          padding: 8,
+                          fontSize: 11,
+                          color: '#cbd5e1',
+                        }}
+                      >
+                        <div style={{ fontWeight: 600 }}>{art.title ?? payload?.tool ?? 'PixelArt'}</div>
+                        {payload?.tool && (
+                          <div style={{ color: '#9ca3af', marginTop: 2 }}>Tool: {payload.tool}</div>
+                        )}
+                        {firstUrl && (
+                          <a
+                            href={firstUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: '#5eead4', marginTop: 4, display: 'inline-block', wordBreak: 'break-all' }}
+                          >
+                            View asset
+                          </a>
+                        )}
+                      </div>
+                    )
+                  })}
+              </div>
+            </div>
+          )}
 
           <div style={{ background: '#1d1d2d', border: '1px solid #2f2f46', borderRadius: 8, padding: 10 }}>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>Last Say</div>

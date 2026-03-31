@@ -56,6 +56,13 @@ import {
 import { applyEphemeralAgentPositions, noteAgentPos } from '../src/runtime/posSync.js'
 import { getModelForRole, getPersonalityForRole } from '../src/runtime/agentRoles.js'
 import { research as runTavilyResearch, extract as runTavilyExtract, crawl as runTavilyCrawl } from '../src/runtime/tavily.js'
+import {
+  hasPixellab,
+  createCharacter as runPixellabCreateCharacter,
+  animateCharacter as runPixellabAnimateCharacter,
+  createTileset as runPixellabCreateTileset,
+  createIsometricTile as runPixellabCreateIsometricTile,
+} from '../src/runtime/pixellab.js'
 import { log, getLogDump, clearLogBuffer } from '../src/logger.js'
 import { pickRoundRobinIndexAvoidRepeat } from '../src/runtime/schedulerPolicy.js'
 
@@ -162,6 +169,8 @@ let stopLoops = false
 let wss: WebSocketServer
 /** True while a Tavily research/extract/crawl is running in the background — prevents Nova from starting another until the report is done. */
 let researcherTavilyInFlight = false
+/** True while a PixelLab request is in flight — one at a time to avoid rate limits. */
+let pixellabInFlight = false
 const retryBlockedUntilByAgent = new Map<string, number>()
 let lastMemoryWarnAtMs = 0
 const memorySamples: Array<{ atMs: number; heapUsedMb: number; rssMb: number }> = []
@@ -1124,6 +1133,8 @@ async function runAgentTurn(agent: WorldState['agents'][0]): Promise<void> {
   const votesOnFirst = firstUnexecuted ? (worldState.artifactVotes ?? {})[firstUnexecuted.id] ?? {} : {}
   const hasVotedOnFirst = firstUnexecuted ? votesOnFirst[agent.id] != null : false
   const tavilyOk = Boolean((process.env.TAVILY_API_KEY ?? '').trim() && (worldState.unlockedTech ?? []).includes('tavily_research'))
+  const pixellabOk = Boolean((process.env.PIXELLAB_API_TOKEN ?? process.env.PIXELLAB_API_KEY ?? '').trim())
+  const pixellabRoleAllowed = agent.role === 'Architect' || agent.role === 'Builder'
 
   const chatLog = worldState.chatLog ?? []
   const lastSay = [...chatLog].reverse().find((e) => e.kind === 'say' && e.agentId !== agent.id)
@@ -1193,6 +1204,7 @@ async function runAgentTurn(agent: WorldState['agents'][0]): Promise<void> {
     lastSpeakerName: lastSay?.agentName,
     lastSpeakerLine: lastSay?.text,
     tavilyToolsAvailable: tavilyOk,
+    pixellabToolsAvailable: pixellabOk && pixellabRoleAllowed,
     agentMemoryText: formatAgentMemory(agent.memory),
     assignedWorkstation,
     gridHeight: worldState.gridHeight,
@@ -1585,9 +1597,134 @@ async function runAgentTurn(agent: WorldState['agents'][0]): Promise<void> {
     }
   }
 
+  // Architect/Builder: PixelLab pixel art (one request at a time)
+  if (pixellabOk && pixellabRoleAllowed && !pixellabInFlight && hasPixellab()) {
+    const hasCreateChar = turn.createCharacter?.description?.trim()
+    const hasAnimate = turn.animateCharacter?.characterId?.trim()
+    const hasTileset = turn.createTileset?.lower != null && turn.createTileset?.upper != null
+    const hasIso = turn.createIsometricTile?.description?.trim()
+    const count = (hasCreateChar ? 1 : 0) + (hasAnimate ? 1 : 0) + (hasTileset ? 1 : 0) + (hasIso ? 1 : 0)
+    if (count === 1) {
+      const agentId = agent.id
+      pixellabInFlight = true
+      const clearPixellab = () => {
+        pixellabInFlight = false
+        broadcastWorld()
+      }
+      if (hasCreateChar) {
+        const desc = turn.createCharacter!.description.trim().slice(0, 300)
+        applyAction({ type: 'SAY', agentId, text: `Requesting pixel art character: ${desc.slice(0, 50)}${desc.length > 50 ? '…' : ''}.` })
+        broadcastWorld()
+        log('AGENT', 'PixelLab createCharacter (background)', { agent: agent.name, description: desc.slice(0, 80) })
+        runPixellabCreateCharacter(desc, turn.createCharacter!.n_directions ?? 8)
+          .then((result) => {
+            if (result?.error) {
+              log('AGENT', 'PixelLab createCharacter error', { agent: agent.name, error: result.error })
+              applyAction({ type: 'SAY', agentId, text: 'Pixel art request failed.' })
+            } else if (result) {
+              applyAction({
+                type: 'CREATE_ARTIFACT',
+                agentId,
+                artifactType: 'PixelArt',
+                title: `Character: ${desc.slice(0, 50)}`,
+                payload: { tool: 'create_character', description: desc, characterId: result.characterId, urls: result.urls },
+              })
+              log('AGENT', 'PixelArt created (createCharacter)', { agent: agent.name })
+            }
+            clearPixellab()
+          })
+          .catch((err) => {
+            log('AGENT', 'PixelLab createCharacter exception', { agent: agent.name, error: String(err) })
+            clearPixellab()
+          })
+      } else if (hasAnimate) {
+        const cid = turn.animateCharacter!.characterId.trim()
+        const anim = turn.animateCharacter!.animation?.trim() || 'walk'
+        applyAction({ type: 'SAY', agentId, text: `Requesting animation (${anim}) for character.` })
+        broadcastWorld()
+        log('AGENT', 'PixelLab animateCharacter (background)', { agent: agent.name, characterId: cid })
+        runPixellabAnimateCharacter(cid, anim)
+          .then((result) => {
+            if (result?.error) {
+              log('AGENT', 'PixelLab animateCharacter error', { agent: agent.name, error: result.error })
+              applyAction({ type: 'SAY', agentId, text: 'Animation request failed.' })
+            } else if (result) {
+              applyAction({
+                type: 'CREATE_ARTIFACT',
+                agentId,
+                artifactType: 'PixelArt',
+                title: `Animation: ${anim}`,
+                payload: { tool: 'animate_character', characterId: cid, animation: anim, urls: result.urls },
+              })
+              log('AGENT', 'PixelArt created (animateCharacter)', { agent: agent.name })
+            }
+            clearPixellab()
+          })
+          .catch((err) => {
+            log('AGENT', 'PixelLab animateCharacter exception', { agent: agent.name, error: String(err) })
+            clearPixellab()
+          })
+      } else if (hasTileset) {
+        const lower = String(turn.createTileset!.lower).trim().slice(0, 100)
+        const upper = String(turn.createTileset!.upper).trim().slice(0, 100)
+        applyAction({ type: 'SAY', agentId, text: `Requesting tileset: ${lower} / ${upper}.` })
+        broadcastWorld()
+        log('AGENT', 'PixelLab createTileset (background)', { agent: agent.name, lower, upper })
+        runPixellabCreateTileset(lower, upper)
+          .then((result) => {
+            if (result?.error) {
+              log('AGENT', 'PixelLab createTileset error', { agent: agent.name, error: result.error })
+              applyAction({ type: 'SAY', agentId, text: 'Tileset request failed.' })
+            } else if (result) {
+              applyAction({
+                type: 'CREATE_ARTIFACT',
+                agentId,
+                artifactType: 'PixelArt',
+                title: `Tileset: ${lower} / ${upper}`,
+                payload: { tool: 'create_tileset', lower, upper, urls: result.urls },
+              })
+              log('AGENT', 'PixelArt created (createTileset)', { agent: agent.name })
+            }
+            clearPixellab()
+          })
+          .catch((err) => {
+            log('AGENT', 'PixelLab createTileset exception', { agent: agent.name, error: String(err) })
+            clearPixellab()
+          })
+      } else if (hasIso) {
+        const desc = turn.createIsometricTile!.description.trim().slice(0, 300)
+        const size = turn.createIsometricTile!.size ?? 32
+        applyAction({ type: 'SAY', agentId, text: `Requesting isometric tile: ${desc.slice(0, 40)}…` })
+        broadcastWorld()
+        log('AGENT', 'PixelLab createIsometricTile (background)', { agent: agent.name, description: desc.slice(0, 80) })
+        runPixellabCreateIsometricTile(desc, size)
+          .then((result) => {
+            if (result?.error) {
+              log('AGENT', 'PixelLab createIsometricTile error', { agent: agent.name, error: result.error })
+              applyAction({ type: 'SAY', agentId, text: 'Isometric tile request failed.' })
+            } else if (result) {
+              applyAction({
+                type: 'CREATE_ARTIFACT',
+                agentId,
+                artifactType: 'PixelArt',
+                title: `Isometric: ${desc.slice(0, 50)}`,
+                payload: { tool: 'create_isometric_tile', description: desc, size, url: result.url, urls: result.url ? [result.url] : undefined },
+              })
+              log('AGENT', 'PixelArt created (createIsometricTile)', { agent: agent.name })
+            }
+            clearPixellab()
+          })
+          .catch((err) => {
+            log('AGENT', 'PixelLab createIsometricTile exception', { agent: agent.name, error: String(err) })
+            clearPixellab()
+          })
+      }
+    }
+  }
+
   if (turn.createArtifact?.artifactType && turn.createArtifact?.payload) {
     const artifactType = turn.createArtifact.artifactType
-    if (['Proposal', 'ResearchReport', 'BuildSpec', 'DecisionRecord', 'StyleGuide'].includes(artifactType)) {
+    if (['Proposal', 'ResearchReport', 'BuildSpec', 'DecisionRecord', 'StyleGuide', 'PixelArt'].includes(artifactType)) {
       if (artifactType === 'Proposal' && layoutSaturated && getFirstUnexecutedProposal(worldState) == null) {
         log('AGENT', 'proposal suppressed (layout saturated)', { agent: agent.name })
       } else {
@@ -1606,7 +1743,7 @@ async function runAgentTurn(agent: WorldState['agents'][0]): Promise<void> {
         applyAction({
           type: 'CREATE_ARTIFACT',
           agentId: agent.id,
-          artifactType: artifactType as 'Proposal' | 'ResearchReport' | 'BuildSpec' | 'DecisionRecord' | 'StyleGuide',
+          artifactType: artifactType as 'Proposal' | 'ResearchReport' | 'BuildSpec' | 'DecisionRecord' | 'StyleGuide' | 'PixelArt',
           title: turn.createArtifact.title,
           payload: artifactType === 'Proposal' ? enginePayload : payload,
         })

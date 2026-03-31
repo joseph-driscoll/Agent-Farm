@@ -689,7 +689,7 @@ Current world:
 ${worldSnapshot}
 
 Reply with JSON only. Keep "say" under ${MAX_SAY_LENGTH} chars. In "say", only discuss the current phase (see CONVERSATION Phase above); do not suggest or propose specific builds (e.g. do not say "Let\'s add X"). When placing or proposing, use location words (back wall, center-left, perimeter, front of room, etc.) — never raw coordinates.
-All coordinates in JSON (placeItem / nextProposal / createArtifact payload) must use (0,0) top-left, y increases downward.
+All coordinates in JSON (placeItem / nextProposal / createArtifact payload) must use (0,0) top-left, y increases downward.${pipelineContext?.pixellabToolsAvailable ? '\nWhen PixelLab is available you may request pixel art (character, tileset, isometric tile, or animation) for the office; at most one such request per turn (use createCharacter, createTileset, createIsometricTile, or animateCharacter).' : ''}
 {
   "say": "",
   "thought": "",
@@ -701,7 +701,7 @@ All coordinates in JSON (placeItem / nextProposal / createArtifact payload) must
   "loadSkill": null,
   "researchQuery": null,
   "extractUrls": null,
-  "crawl": null
+  "crawl": null${pipelineContext?.pixellabToolsAvailable ? ',\n  "createCharacter": null,\n  "animateCharacter": null,\n  "createTileset": null,\n  "createIsometricTile": null' : ''}
 }`
 }
 
