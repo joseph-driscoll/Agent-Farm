@@ -50,6 +50,7 @@ import {
   getConversationPhase,
   formatAgentMemory,
   filterBannedPhrases,
+  isRepetitiveDialogue,
   truncateSay,
   type SnapshotWorld,
 } from '../src/runtime/llm.js'
@@ -1053,6 +1054,64 @@ function isDirectDecorDefId(defId: string): boolean {
   return isStructuralWallPiece(n) || n === 'floor'
 }
 
+function describeLocation(x: number, y: number, w: WorldState): string {
+  const floorEndY = w.gridHeight - 1
+  const centerX = Math.floor((w.gridWidth - 1) / 2)
+  if (y < BACK_WALL_ROWS) {
+    if (x <= 1) return 'top-left back wall'
+    if (x >= w.gridWidth - 2) return 'top-right back wall'
+    return 'back wall'
+  }
+  if (y === floorEndY) return x < centerX ? 'front-left perimeter' : 'front-right perimeter'
+  if (x === 0) return 'left perimeter'
+  if (x === w.gridWidth - 1) return 'right perimeter'
+  if (x <= centerX - 2) return 'center-left'
+  if (x >= centerX + 2) return 'center-right'
+  return 'center'
+}
+
+function pickFreshLine(candidates: string[], recentLines: string[], seed: number): string {
+  const recent = new Set(
+    recentLines
+      .slice(-6)
+      .map((s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+  )
+  for (let i = 0; i < candidates.length; i++) {
+    const idx = (seed + i) % candidates.length
+    const line = candidates[idx]!
+    const normalized = line.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
+    if (!recent.has(normalized)) return line
+  }
+  return candidates[seed % candidates.length]!
+}
+
+function buildArchitectFastPathSay(agentId: string, defId: string, x: number, y: number, w: WorldState): string {
+  const loc = describeLocation(x, y, w)
+  const recent = (w.chatLog ?? []).filter((e) => e.agentId === agentId && e.kind === 'say').map((e) => e.text)
+  const item = normalizeDefId(defId).replace(/_/g, ' ')
+  const options = [
+    `Queued ${item} around the ${loc}. Pixel, your move.`,
+    `Right then, ${item} is queued for the ${loc}.`,
+    `Added a ${item} in the ${loc}; team, does that flow?`,
+    `Proposal up: ${item} near the ${loc}.`,
+  ]
+  return pickFreshLine(options, recent, w.tick + x + y)
+}
+
+function buildBuilderFastPathSay(agentId: string, defId: string, x: number, y: number, w: WorldState): string {
+  const loc = describeLocation(x, y, w)
+  const recent = (w.chatLog ?? []).filter((e) => e.agentId === agentId && e.kind === 'say').map((e) => e.text)
+  const item = normalizeDefId(defId).replace(/_/g, ' ')
+  const options = [
+    `${item} placed at the ${loc}.`,
+    `Done. ${item} is in on the ${loc}.`,
+    `${item}'s set ${loc}.`,
+    `Locked in: ${item} at ${loc}.`,
+  ]
+  return pickFreshLine(options, recent, w.tick + x + y)
+}
+
 /** Run Builder placement from queue without calling the LLM (saves one API call per placement). */
 async function runBuilderPlacementOnly(agent: WorldState['agents'][0]): Promise<void> {
   eventIndexThisTick = 0
@@ -1086,15 +1145,12 @@ async function runBuilderPlacementOnly(agent: WorldState['agents'][0]): Promise<
     flipped: undefined,
   })
   if (placed) {
-    const sayIndex = worldState.tick % BUILDER_SAY_AFTER_PLACE.length
-    applyAction({ type: 'SAY', agentId: agent.id, text: BUILDER_SAY_AFTER_PLACE[sayIndex]! })
+    applyAction({ type: 'SAY', agentId: agent.id, text: buildBuilderFastPathSay(agent.id, defId, placeX, placeY, worldState) })
   }
   applyAction({ type: 'SET_INTENT', agentId: agent.id, intent: 'hold' })
   worldState = updateScoresFromWorld(worldState)
   broadcastWorld()
 }
-
-const BUILDER_SAY_AFTER_PLACE = ['Done.', 'There.', 'Placed.', 'Done and done.', 'There you go.']
 
 /** Add one proposal from valid spots without calling the LLM (saves one API call). */
 async function runArchitectProposalOnly(agent: WorldState['agents'][0]): Promise<void> {
@@ -1105,7 +1161,7 @@ async function runArchitectProposalOnly(agent: WorldState['agents'][0]): Promise
   log('AGENT', 'architect proposal (no LLM)', { agent: agent.name, defId: next.defId, x: next.x, y: next.y })
   worldState = advanceTick(worldState)
   applyAction({ type: 'SET_INTENT', agentId: agent.id, intent: 'propose' })
-  applyAction({ type: 'SAY', agentId: agent.id, text: 'Adding that to the queue.' })
+  applyAction({ type: 'SAY', agentId: agent.id, text: buildArchitectFastPathSay(agent.id, next.defId, next.x, next.y, worldState) })
   applyAction({
     type: 'CREATE_ARTIFACT',
     agentId: agent.id,
@@ -1381,6 +1437,13 @@ async function runAgentTurn(agent: WorldState['agents'][0]): Promise<void> {
   const builderPlacementPhrase = /^(done\.?|there\.?|placed\.?|occupied\.?\s*next\.?|next\.?|got it\.?|on it\.?)$/i.test(sayText.trim())
   if (agent.role === 'Builder' && sayText && builderPlacementPhrase && !builderWillPlaceThisTurn) {
     log('AGENT', 'builder say suppressed (no placement this turn)', { agent: agent.name, was: sayText.trim() })
+    sayText = ''
+  }
+  if (sayText && isRepetitiveDialogue(sayText, agentRecentSays, lastSay?.text)) {
+    log('AGENT', 'say suppressed (repetitive dialogue)', {
+      agent: agent.name,
+      was: sayText.trim().slice(0, 100),
+    })
     sayText = ''
   }
   if (sayText) {

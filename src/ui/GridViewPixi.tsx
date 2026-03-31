@@ -29,6 +29,7 @@ import { useClientMotion } from '../runtime/clientMotion'
 import { createPixiLayers } from './pixi/layers'
 import { createSpriteFromEntry } from './pixi/spriteFactory'
 import { WORKSTATION_BOTTOM_REGION, WORKSTATION_TOP_REGION } from '../config/workstationPieces'
+import { getDisplayNameForRole } from '../runtime/agentRoles'
 
 const BG = 0x12121c
 const WALL_ROW = 0x2d3142
@@ -642,6 +643,26 @@ export function GridViewPixi({
                 💡
               </div>
             )}
+            <div
+              style={{
+                marginTop: 2,
+                display: 'inline-block',
+                padding: '2px 6px',
+                borderRadius: 6,
+                background: 'rgba(12, 18, 30, 0.9)',
+                border: agentSelected ? '1px solid rgba(94, 234, 212, 0.8)' : '1px solid rgba(148, 163, 184, 0.45)',
+                color: '#e2e8f0',
+                fontSize: 5,
+                lineHeight: 1.2,
+                fontWeight: 600,
+                letterSpacing: 0.1,
+                textShadow: '0 1px 2px rgba(0,0,0,0.55)',
+                pointerEvents: 'none',
+              }}
+              title={`${a.name} (${getDisplayNameForRole(a.role)})`}
+            >
+              {a.name} ({getDisplayNameForRole(a.role)})
+            </div>
           </div>
         )
       })}

@@ -583,6 +583,36 @@ export function filterBannedPhrases(text: string): string {
   return sanitizeSayForRules(text)
 }
 
+function normalizeSayForCompare(text: string): string {
+  return (text ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export function isRepetitiveDialogue(
+  sayText: string,
+  agentRecentLines?: string[],
+  lastSpeakerLine?: string
+): boolean {
+  const normalized = normalizeSayForCompare(sayText)
+  if (!normalized) return false
+  const recent = (agentRecentLines ?? [])
+    .map(normalizeSayForCompare)
+    .filter((s) => s.length > 0)
+    .slice(-4)
+  if (recent.includes(normalized)) return true
+  const lastOther = normalizeSayForCompare(lastSpeakerLine ?? '')
+  if (lastOther && lastOther === normalized) return true
+  // Avoid low-information loops that differ only by one token.
+  const short = normalized.split(' ').filter(Boolean)
+  if (short.length <= 5 && recent.some((r) => r.startsWith(short[0] ?? '') && r.includes(short[short.length - 1] ?? ''))) {
+    return true
+  }
+  return false
+}
+
 export function buildWorldSnapshot(
   world: SnapshotWorld,
   _researchSnippet?: string,
@@ -669,6 +699,10 @@ export function buildPrompt(
 ): string {
   const skillCatalogBlock = getSkillCatalogText()
   const loadedSkillsBlock = formatLoadedSkills(pipelineContext?.loadedSkills ?? [])
+  const personalityBlock =
+    pipelineContext?.personality && String(pipelineContext.personality).trim()
+      ? `\n--- YOUR PERSONALITY ---\n${String(pipelineContext.personality).trim()}\n---\n`
+      : ''
   const memoryBlock =
     pipelineContext?.agentMemoryText && String(pipelineContext.agentMemoryText).trim()
       ? `\n--- YOUR MEMORY ---\n${pipelineContext.agentMemoryText}\n---\n`
@@ -676,12 +710,13 @@ export function buildPrompt(
 
   const recentBlock =
     agentRecentLines && agentRecentLines.length > 0
-      ? `\nYour last messages — do NOT repeat:\n${agentRecentLines.map((l) => `- ${l}`).join('\n')}\n`
+      ? `\nYour last messages — do NOT repeat wording or sentence structure:\n${agentRecentLines.map((l) => `- ${l}`).join('\n')}\n`
       : ''
 
   return `You are ${agentName}, the ${getDisplayNameForRole(role as AgentRole)}.
 ${skillCatalogBlock}
 ${loadedSkillsBlock}
+${personalityBlock}
 ${memoryBlock}
 ${recentBlock}
 
@@ -689,6 +724,7 @@ Current world:
 ${worldSnapshot}
 
 Reply with JSON only. Keep "say" under ${MAX_SAY_LENGTH} chars. In "say", only discuss the current phase (see CONVERSATION Phase above); do not suggest or propose specific builds (e.g. do not say "Let\'s add X"). When placing or proposing, use location words (back wall, center-left, perimeter, front of room, etc.) — never raw coordinates.
+Important conversation quality: keep "say" natural and social, acknowledge another agent when useful, and avoid repeating your recent lines or catchphrases.
 All coordinates in JSON (placeItem / nextProposal / createArtifact payload) must use (0,0) top-left, y increases downward.${pipelineContext?.pixellabToolsAvailable ? '\nWhen PixelLab is available you may request pixel art (character, tileset, isometric tile, or animation) for the office; at most one such request per turn (use createCharacter, createTileset, createIsometricTile, or animateCharacter).' : ''}
 {
   "say": "",
